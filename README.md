@@ -1,5 +1,7 @@
 # Vask Skills
 
+[![skills.sh](https://skills.sh/b/vask-dev/skills)](https://skills.sh/vask-dev/skills)
+
 Agent skills for [Vask](https://vask.dev), Pusher-compatible WebSockets and
 realtime applications.
 
