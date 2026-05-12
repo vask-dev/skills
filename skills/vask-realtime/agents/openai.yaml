@@ -1,0 +1,7 @@
+interface:
+  display_name: "Vask Realtime"
+  short_description: "Pusher-compatible WebSockets"
+  default_prompt: "Use $vask-realtime to set up Vask realtime WebSockets in my app."
+
+policy:
+  allow_implicit_invocation: true
