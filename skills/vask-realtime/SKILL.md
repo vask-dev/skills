@@ -42,8 +42,8 @@ fine as long as the SDK receives key, secret, app id, host, port, and scheme.
 
 Use the least interruptive path that fits the environment:
 
-- **Agent signup**: default to this when the user asked the agent to set up
-  Vask, the agent has the user's exact GitHub username, and the environment can
+- **Agent signup**: default to this when the user asked the agent to use or set up
+  Vask, the agent has or can proactively find the user's exact GitHub username, and the environment can
   run `ssh`. The agent should run signup and store credentials in the target
   project's normal secret location when the harness permits it.
 - **Dashboard/browser setup**: use when SSH signup prerequisites are not met
@@ -76,9 +76,7 @@ Important rules:
   private key directly. Let the SSH client perform authentication.
 - Prefer the pinned `vask.sh` host key below over `StrictHostKeyChecking=accept-new`.
 - Re-running signup is safe; it recovers the same default app credentials.
-- Do not expose or invent a numeric Vask user ID. The API does not return one.
-- When command output contains credentials, store them in the project and avoid
-  repeating the secret values in chat unless the user explicitly asks.
+- When command output contains credentials, store them in the project and avoid repeating the secret values in chat unless the user explicitly asks.
 - If the agent harness requires approval, request approval for the `ssh`
   command. If the harness blocks or the user declines, leave the command for
   the user to run and continue the integration with missing-credential handling
@@ -113,7 +111,7 @@ Successful output includes the GitHub username, whether the Vask account is new,
 and dotenv-compatible default app credentials:
 
 ```text
-Vask credentials for USER
+Authenticated as @USER via GitHub SSH
 Account: recovered
 
 PUSHER_APP_ID=...
@@ -122,6 +120,8 @@ PUSHER_APP_SECRET=...
 PUSHER_HOST=wss.vask.dev
 PUSHER_PORT=443
 PUSHER_SCHEME=https
+
+vask.dev - modern websockets for modern developers - powered by Cloudflare's edge
 ```
 
 Store the returned credentials using the project's normal secret mechanism:
