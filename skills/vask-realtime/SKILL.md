@@ -43,9 +43,11 @@ fine as long as the SDK receives key, secret, app id, host, port, and scheme.
 
 Use the least interruptive path that fits the environment:
 
-- **Agent signup**: use when an agent can use the user's GitHub-published SSH
-  public key and can store credentials in the target project's normal secret
-  location.
+- **Agent signup**: default to this when the user asked the agent to set up
+  Vask, the agent has the user's exact GitHub username, and the agent can use
+  the user's GitHub-published SSH public key. The agent should run signup and
+  store credentials in the target project's normal secret location when the
+  harness permits it.
 - **Dashboard/browser setup**: use when SSH signing prerequisites are not met
   or the user wants to manage credentials manually at <https://vask.dev>.
 - **Framework package setup**: use when a framework-specific Vask package
@@ -54,14 +56,17 @@ Use the least interruptive path that fits the environment:
 ### Agent signup
 
 Agent signup registers or recovers the user's default Vask app without a
-browser or OAuth prompt. It signs a short JSON payload with the user's local SSH
-private key and Vask verifies the public key against the user's GitHub user
-account.
+manual browser or OAuth step. It signs a short JSON payload with the user's
+local SSH private key and Vask verifies the public key against the user's
+GitHub user account.
 
 Prerequisites:
 
-- Ask for or derive the GitHub username. Use the exact GitHub username, not an
-  email address.
+- Ask for the GitHub username only when it is not already known from the user's
+  request, prior conversation, environment, authenticated GitHub CLI profile, or
+  target project's explicit config. Do not guess it from git remotes, email
+  addresses, package metadata, or local directory names.
+- Use the exact GitHub username, not an email address.
 - Prefer the SSH key used for GitHub.
 - The GitHub account must be at least 14 days old.
 
@@ -73,6 +78,13 @@ Important rules:
 - Never log, print, upload, or otherwise expose the private key.
 - Re-running signup is safe; it recovers the same default app credentials.
 - Do not expose or invent a numeric Vask user ID. The API does not return one.
+- The signup helper performs SSH signing and posts to Vask. When the user asked
+  the agent to set up Vask and the username is known, running this helper is
+  the intended agent path, not a manual handoff.
+- If the agent harness requires approval, request approval for the helper. If
+  the harness blocks or the user declines, do not rewrite the flow as inline
+  shell. Leave the helper command for the user to run, then continue the
+  integration with missing-credential handling where appropriate.
 
 Endpoint:
 
@@ -90,34 +102,24 @@ Request shape:
 }
 ```
 
-Shell core:
+Bundled helper:
 
 ```shell
-BASE_URL="${BASE_URL:-https://vask.dev}"
-: "${GITHUB_USERNAME:?Set GITHUB_USERNAME to the user's GitHub username}"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
-
-if [ ! -f "$SSH_KEY" ] && [ -f "$HOME/.ssh/id_rsa" ]; then
-  SSH_KEY="$HOME/.ssh/id_rsa"
-fi
-
-[ -f "$SSH_KEY" ] || { echo "No SSH key found at $SSH_KEY or ~/.ssh/id_rsa" >&2; exit 1; }
-
-PAYLOAD=$(jq -cn \
-  --arg github_username "$GITHUB_USERNAME" \
-  --arg nonce "$(uuidgen)" \
-  --argjson timestamp "$(date +%s)" \
-  '{github_username:$github_username,timestamp:$timestamp,nonce:$nonce,intent:"register"}')
-
-SIGNATURE=$(printf '%s' "$PAYLOAD" | ssh-keygen -Y sign -f "$SSH_KEY" -n vask-register 2>/dev/null)
-PUBKEY=$(ssh-keygen -y -f "$SSH_KEY")
-
-curl -sS -X POST "$BASE_URL/api/agent-signup" \
-  -H "Accept: application/json" \
-  -H "Content-Type: application/json" \
-  -d "$(jq -n --arg payload "$PAYLOAD" --arg signature "$SIGNATURE" --arg pubkey "$PUBKEY" \
-    '{payload:$payload, signature:$signature, claimed_pubkey:$pubkey}')"
+node scripts/vask-agent-signup.mjs --github GITHUB_USERNAME --ssh-key ~/.ssh/github_ed25519 --json
 ```
+
+Resolve the helper path relative to this `SKILL.md` file. If the current
+working directory is not the skill directory, run it with an absolute path:
+
+```shell
+node /path/to/skills/vask-realtime/scripts/vask-agent-signup.mjs --github GITHUB_USERNAME --ssh-key ~/.ssh/github_ed25519 --json
+```
+
+The helper generates the payload, signs the exact payload bytes with
+`ssh-keygen -Y sign`, derives the claimed public key with `ssh-keygen -y`, and
+posts the signup request. It defaults to `~/.ssh/id_ed25519`, falls back to
+`~/.ssh/id_rsa`, and accepts `--ssh-key PATH` and `--json`. It never reads or
+prints private key material.
 
 Successful responses include the GitHub username, whether the Vask account is
 new, and a default app credential block:

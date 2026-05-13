@@ -34,7 +34,8 @@ free WebSockets, presence channels, private channels, and webhooks.
 
 ## Development
 
-The skill source lives in `skills/vask-realtime/SKILL.md`.
+The skill source lives in `skills/vask-realtime/`, including `SKILL.md` and
+the bundled agent-signup helper script.
 
 Validate local discovery with:
 
