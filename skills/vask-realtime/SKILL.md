@@ -74,6 +74,7 @@ Important rules:
 
 - Do not read, copy, sign with, print, upload, or otherwise handle the user's
   private key directly. Let the SSH client perform authentication.
+- Prefer the pinned `vask.sh` host key below over `StrictHostKeyChecking=accept-new`.
 - Re-running signup is safe; it recovers the same default app credentials.
 - Do not expose or invent a numeric Vask user ID. The API does not return one.
 - When command output contains credentials, store them in the project and avoid
@@ -86,14 +87,26 @@ Important rules:
 Command:
 
 ```shell
-ssh -o StrictHostKeyChecking=accept-new GITHUB_USERNAME@vask.sh
+known_hosts="$(mktemp)"
+trap 'rm -f "$known_hosts"' EXIT
+printf '%s\n' 'vask.sh ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIWrwnKa+idkgf8+Zb9U5FPYBjGm2rf3lIyrn90QCYJu' > "$known_hosts"
+ssh -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes GITHUB_USERNAME@vask.sh
+```
+
+Pinned `vask.sh` host key fingerprint:
+
+```text
+SHA256:NNzjhjBT+n9fwVBuzB45CiuJSrWpZy9lKxB0j6XSi7c
 ```
 
 If the user needs to force a specific GitHub SSH identity, use normal SSH
 options and still let SSH do the authentication:
 
 ```shell
-ssh -i ~/.ssh/github_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new GITHUB_USERNAME@vask.sh
+known_hosts="$(mktemp)"
+trap 'rm -f "$known_hosts"' EXIT
+printf '%s\n' 'vask.sh ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIWrwnKa+idkgf8+Zb9U5FPYBjGm2rf3lIyrn90QCYJu' > "$known_hosts"
+ssh -i ~/.ssh/github_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes GITHUB_USERNAME@vask.sh
 ```
 
 Successful output includes the GitHub username, whether the Vask account is new,
@@ -119,8 +132,10 @@ aliases are fine if the application maps them into the Pusher SDK.
 
 Error handling:
 
-- SSH host key prompt: use normal SSH host verification. For non-interactive
-  agent runs, `StrictHostKeyChecking=accept-new` is acceptable.
+- SSH host key mismatch: stop and ask the user before continuing. It may mean
+  the pinned key is stale or the connection is being intercepted.
+- SSH host key prompt: use the pinned-key command above. For casual manual
+  testing only, `StrictHostKeyChecking=accept-new` is acceptable.
 - Permission denied: use the GitHub username exactly and make sure the SSH key
   offered by the local SSH client is published on GitHub.
 - Key not published: ask the user to upload the matching public key to GitHub or
