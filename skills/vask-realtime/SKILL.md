@@ -7,8 +7,7 @@ description: Set up and use Vask for Pusher-compatible WebSockets and realtime a
 
 ## When to use this skill
 
-- Initial setup of Vask or WebSockets in a JavaScript, TypeScript, Rails, or
-  other app.
+- Initial setup of Vask or WebSockets or realtime comms.
 - Replacing Pusher with Vask while keeping Pusher-compatible SDKs and protocol.
 - Configuring browser clients with `pusher-js`.
 - Configuring server-side publish, private channel auth, or presence auth.
@@ -44,11 +43,10 @@ fine as long as the SDK receives key, secret, app id, host, port, and scheme.
 Use the least interruptive path that fits the environment:
 
 - **Agent signup**: default to this when the user asked the agent to set up
-  Vask, the agent has the user's exact GitHub username, and the agent can use
-  the user's GitHub-published SSH public key. The agent should run signup and
-  store credentials in the target project's normal secret location when the
-  harness permits it.
-- **Dashboard/browser setup**: use when SSH signing prerequisites are not met
+  Vask, the agent has the user's exact GitHub username, and the environment can
+  run `ssh`. The agent should run signup and store credentials in the target
+  project's normal secret location when the harness permits it.
+- **Dashboard/browser setup**: use when SSH signup prerequisites are not met
   or the user wants to manage credentials manually at <https://vask.dev>.
 - **Framework package setup**: use when a framework-specific Vask package
   exists and is a better fit than generic Pusher-compatible configuration.
@@ -56,9 +54,10 @@ Use the least interruptive path that fits the environment:
 ### Agent signup
 
 Agent signup registers or recovers the user's default Vask app without a
-manual browser or OAuth step. It signs a short JSON payload with the user's
-local SSH private key and Vask verifies the public key against the user's
-GitHub user account.
+manual browser or OAuth step. The agent connects to Vask's SSH gateway as the
+user's GitHub username. The SSH handshake proves private-key ownership, and the
+gateway verifies that the authenticated public key is published on the user's
+GitHub account.
 
 Prerequisites:
 
@@ -67,83 +66,49 @@ Prerequisites:
   target project's explicit config. Do not guess it from git remotes, email
   addresses, package metadata, or local directory names.
 - Use the exact GitHub username, not an email address.
-- Prefer the SSH key used for GitHub.
+- The environment must be able to run `ssh` and authenticate with a key that is
+  published on the user's GitHub account.
 - The GitHub account must be at least 14 days old.
 
 Important rules:
 
-- Sign the inner payload bytes exactly as sent in the outer JSON.
-- Generate a fresh Unix timestamp and nonce for every request.
-- Use SSHSIG namespace `vask-register`.
-- Never log, print, upload, or otherwise expose the private key.
+- Do not read, copy, sign with, print, upload, or otherwise handle the user's
+  private key directly. Let the SSH client perform authentication.
 - Re-running signup is safe; it recovers the same default app credentials.
 - Do not expose or invent a numeric Vask user ID. The API does not return one.
-- The signup helper performs SSH signing and posts to Vask. When the user asked
-  the agent to set up Vask and the username is known, running this helper is
-  the intended agent path, not a manual handoff.
-- If the agent harness requires approval, request approval for the helper. If
-  the harness blocks or the user declines, do not rewrite the flow as inline
-  shell. Leave the helper command for the user to run, then continue the
-  integration with missing-credential handling where appropriate.
+- When command output contains credentials, store them in the project and avoid
+  repeating the secret values in chat unless the user explicitly asks.
+- If the agent harness requires approval, request approval for the `ssh`
+  command. If the harness blocks or the user declines, leave the command for
+  the user to run and continue the integration with missing-credential handling
+  where appropriate.
 
-Endpoint:
+Command:
+
+```shell
+ssh -o StrictHostKeyChecking=accept-new GITHUB_USERNAME@vask.sh
+```
+
+If the user needs to force a specific GitHub SSH identity, use normal SSH
+options and still let SSH do the authentication:
+
+```shell
+ssh -i ~/.ssh/github_ed25519 -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new GITHUB_USERNAME@vask.sh
+```
+
+Successful output includes the GitHub username, whether the Vask account is new,
+and dotenv-compatible default app credentials:
 
 ```text
-POST https://vask.dev/api/agent-signup
-```
+Vask credentials for USER
+Account: recovered
 
-Request shape:
-
-```json
-{
-  "payload": "{\"github_username\":\"USER\",\"timestamp\":1778580000,\"nonce\":\"UUID\",\"intent\":\"register\"}",
-  "signature": "-----BEGIN SSH SIGNATURE-----\n...\n-----END SSH SIGNATURE-----",
-  "claimed_pubkey": "ssh-ed25519 ..."
-}
-```
-
-Bundled helper:
-
-```shell
-node scripts/vask-agent-signup.mjs --github GITHUB_USERNAME --ssh-key ~/.ssh/github_ed25519 --json
-```
-
-Resolve the helper path relative to this `SKILL.md` file. If the current
-working directory is not the skill directory, run it with an absolute path:
-
-```shell
-node /path/to/skills/vask-realtime/scripts/vask-agent-signup.mjs --github GITHUB_USERNAME --ssh-key ~/.ssh/github_ed25519 --json
-```
-
-The helper generates the payload, signs the exact payload bytes with
-`ssh-keygen -Y sign`, derives the claimed public key with `ssh-keygen -y`, and
-posts the signup request. It defaults to `~/.ssh/id_ed25519`, falls back to
-`~/.ssh/id_rsa`, and accepts `--ssh-key PATH` and `--json`. It never reads or
-prints private key material.
-
-Successful responses include the GitHub username, whether the Vask account is
-new, and a default app credential block:
-
-```json
-{
-  "status": "ok",
-  "user": {
-    "github_username": "USER",
-    "is_new_account": false
-  },
-  "app": {
-    "id": "user-default",
-    "name": "USER-default",
-    "credentials": {
-      "PUSHER_APP_ID": "same-as-key",
-      "PUSHER_APP_KEY": "...",
-      "PUSHER_APP_SECRET": "...",
-      "PUSHER_HOST": "wss.vask.dev",
-      "PUSHER_PORT": "443",
-      "PUSHER_SCHEME": "https"
-    }
-  }
-}
+PUSHER_APP_ID=...
+PUSHER_APP_KEY=...
+PUSHER_APP_SECRET=...
+PUSHER_HOST=wss.vask.dev
+PUSHER_PORT=443
+PUSHER_SCHEME=https
 ```
 
 Store the returned credentials using the project's normal secret mechanism:
@@ -154,14 +119,15 @@ aliases are fine if the application maps them into the Pusher SDK.
 
 Error handling:
 
-- `invalid_payload`: fix the inner JSON or GitHub username format.
-- `payload_expired`: regenerate payload, timestamp, nonce, and signature.
-- `nonce_reused`: regenerate payload, nonce, timestamp, and signature, then retry.
-- `pubkey_not_published`: ask the user to upload the matching public key to GitHub.
-- `invalid_signature`: verify the signed bytes, SSH key, and claimed public key match.
-- `abuse_filter_failed`: GitHub account is too new; use another eligible account or wait.
-- `rate_limited`: back off before retrying.
-- `github_api_failed`: GitHub is unavailable or rate-limited; retry later.
+- SSH host key prompt: use normal SSH host verification. For non-interactive
+  agent runs, `StrictHostKeyChecking=accept-new` is acceptable.
+- Permission denied: use the GitHub username exactly and make sure the SSH key
+  offered by the local SSH client is published on GitHub.
+- Key not published: ask the user to upload the matching public key to GitHub or
+  retry with the identity file they use for GitHub.
+- GitHub account too new: use another eligible account or wait until the account
+  is at least 14 days old.
+- Rate limiting or temporary GitHub/Vask failures: back off and retry later.
 
 ## Browser clients
 
