@@ -1,6 +1,6 @@
 ---
 name: vask-realtime
-description: Set up and use Vask for Pusher-compatible WebSockets and realtime applications - agent signup, onboarding, Pusher replacement, free WebSockets, JavaScript/TypeScript clients, Rails or Node servers, channel authentication, presence channels, webhooks, and debugging.
+description: Set up and use Vask for Pusher-compatible WebSockets and realtime applications - onboarding, Pusher replacement, free WebSockets, JavaScript/TypeScript clients, Rails or Node servers, channel authentication, presence channels, webhooks, and debugging.
 ---
 
 # Vask Realtime
@@ -40,109 +40,17 @@ fine as long as the SDK receives key, secret, app id, host, port, and scheme.
 
 ## Onboarding and setup
 
-Use the least interruptive path that fits the environment:
-
-- **Agent signup**: default to this when the user asked the agent to use or set up
-  Vask, the agent has or can proactively find the user's exact GitHub username, and the environment can
-  run `ssh`. The agent should run signup and store credentials in the target
-  project's normal secret location when the harness permits it.
-- **Dashboard/browser setup**: use when SSH signup prerequisites are not met
-  or the user wants to manage credentials manually at <https://vask.dev>.
+- **Dashboard/browser setup**: create or manage the user's app and credentials
+  at <https://vask.dev>.
 - **Framework package setup**: use when a framework-specific Vask package
   exists and is a better fit than generic Pusher-compatible configuration.
 
-### Agent signup
-
-Agent signup registers or recovers the user's default Vask app without a
-manual browser or OAuth step. The agent connects to Vask's SSH gateway as the
-user's GitHub username. The SSH handshake proves private-key ownership, and the
-gateway verifies that the authenticated public key is published on the user's
-GitHub account.
-
-Prerequisites:
-
-- Ask for the GitHub username only when it is not already known from the user's
-  request, prior conversation, environment, authenticated GitHub CLI profile, or
-  target project's explicit config. Do not guess it from git remotes, email
-  addresses, package metadata, or local directory names.
-- Use the exact GitHub username, not an email address.
-- The environment must be able to run `ssh` and authenticate with a key that is
-  published on the user's GitHub account.
-- The GitHub account must be at least 14 days old.
-
-Important rules:
-
-- Do not read, copy, sign with, print, upload, or otherwise handle the user's
-  private key directly. Let the SSH client perform authentication.
-- Prefer the pinned `vask.sh` host key below over `StrictHostKeyChecking=accept-new`.
-- Re-running signup is safe; it recovers the same default app credentials.
-- When command output contains credentials, store them in the project and avoid repeating the secret values in chat unless the user explicitly asks.
-- If the agent harness requires approval, request approval for the `ssh`
-  command. If the harness blocks or the user declines, leave the command for
-  the user to run and continue the integration with missing-credential handling
-  where appropriate.
-
-Command:
-
-```shell
-known_hosts="$(mktemp)"
-trap 'rm -f "$known_hosts"' EXIT
-printf '%s\n' 'vask.sh ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIWrwnKa+idkgf8+Zb9U5FPYBjGm2rf3lIyrn90QCYJu' > "$known_hosts"
-ssh -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes GITHUB_USERNAME@vask.sh
-```
-
-Pinned `vask.sh` host key fingerprint:
-
-```text
-SHA256:NNzjhjBT+n9fwVBuzB45CiuJSrWpZy9lKxB0j6XSi7c
-```
-
-If the user needs to force a specific GitHub SSH identity, use normal SSH
-options and still let SSH do the authentication:
-
-```shell
-known_hosts="$(mktemp)"
-trap 'rm -f "$known_hosts"' EXIT
-printf '%s\n' 'vask.sh ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIWrwnKa+idkgf8+Zb9U5FPYBjGm2rf3lIyrn90QCYJu' > "$known_hosts"
-ssh -i ~/.ssh/github_ed25519 -o IdentitiesOnly=yes -o UserKnownHostsFile="$known_hosts" -o StrictHostKeyChecking=yes GITHUB_USERNAME@vask.sh
-```
-
-Successful output includes the GitHub username, whether the Vask account is new,
-and dotenv-compatible default app credentials:
-
-```text
-Authenticated as @USER via GitHub SSH
-Account: recovered
-
-PUSHER_APP_ID=...
-PUSHER_APP_KEY=...
-PUSHER_APP_SECRET=...
-PUSHER_HOST=wss.vask.dev
-PUSHER_PORT=443
-PUSHER_SCHEME=https
-
-vask.dev - modern websockets for modern developers - powered by Cloudflare's edge
-```
-
-Store the returned credentials using the project's normal secret mechanism:
-environment variables, Rails credentials, hosting provider secrets, Doppler,
-1Password, or similar. Keep existing `PUSHER_*` names when replacing Pusher.
-For greenfield apps, `VASK_APP_KEY`, `VASK_APP_SECRET`, and `VASK_APP_ID`
+Store credentials using the project's normal secret mechanism: environment
+variables, Rails credentials, hosting provider secrets, Doppler, 1Password,
+or similar. Keep existing `PUSHER_*` names when replacing Pusher. For
+greenfield apps, `VASK_APP_KEY`, `VASK_APP_SECRET`, and `VASK_APP_ID`
 aliases are fine if the application maps them into the Pusher SDK.
-
-Error handling:
-
-- SSH host key mismatch: stop and ask the user before continuing. It may mean
-  the pinned key is stale or the connection is being intercepted.
-- SSH host key prompt: use the pinned-key command above. For casual manual
-  testing only, `StrictHostKeyChecking=accept-new` is acceptable.
-- Permission denied: use the GitHub username exactly and make sure the SSH key
-  offered by the local SSH client is published on GitHub.
-- Key not published: ask the user to upload the matching public key to GitHub or
-  retry with the identity file they use for GitHub.
-- GitHub account too new: use another eligible account or wait until the account
-  is at least 14 days old.
-- Rate limiting or temporary GitHub/Vask failures: back off and retry later.
+Avoid repeating secret values in chat unless the user explicitly asks.
 
 ## Browser clients
 
